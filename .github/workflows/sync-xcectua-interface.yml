@@ -1,0 +1,208 @@
+name: Sync Xcectua with Xcectua Interface (rexec)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily at 02:10 UTC (adjust as needed)
+    - cron: "10 2 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RER_LOCKFILE: rer/rer.lock.yml
+  IFACE_TEMPLATES_PATH: rexce/xcectua-interface/templates/xcectua-circuit
+  SYNC_TMP_DIR: .sync-tmp
+  DRIFT_DIR: .sync-drift
+  PDR_RETENTION_DAYS: "7" # for the drift report artifact retention
+
+jobs:
+  sync-interface:
+    name: Sync interface templates from rexec
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Xcectua (consumer repo)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify required tools are available
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v jq >/dev/null || sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install yq (YAML processor)
+        uses: mikefarah/yq@v4.44.3
+
+      - name: Read RER lockfile (pin rexec repo + ref)
+        id: lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "${RER_LOCKFILE}" || { echo "Missing ${RER_LOCKFILE}"; exit 1; }
+          RER_REPO="$(yq '.rer.repository' "${RER_LOCKFILE}")"
+          RER_REF="$(yq '.rer.ref' "${RER_LOCKFILE}")"
+          echo "rer_repo=${RER_REPO}" >> $GITHUB_OUTPUT
+          echo "rer_ref=${RER_REF}" >> $GITHUB_OUTPUT
+
+      - name: Sparse-checkout rexec interface templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "${SYNC_TMP_DIR}" "${DRIFT_DIR}"
+          mkdir -p "${SYNC_TMP_DIR}" "${DRIFT_DIR}"
+          pushd "${SYNC_TMP_DIR}"
+          git init
+          git remote add origin "https://github.com/${{ steps.lock.outputs.rer_repo }}.git"
+          git config core.sparseCheckout true
+          echo "${IFACE_TEMPLATES_PATH}/" >> .git/info/sparse-checkout
+          git pull origin "${{ steps.lock.outputs.rer_ref }}"
+          popd
+
+      - name: Snapshot current files (before)
+        id: snap_before
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Only the three consumer circuit files should be synced
+          files=(
+            ".github/workflows/rer-governance-gate.yml"
+            ".github/CODEOWNERS"
+            "rer/rer.lock.yml"
+          )
+          mkdir -p "${DRIFT_DIR}"
+          : > "${DRIFT_DIR}/before.sha256"
+          for f in "${files[@]}"; do
+            if [[ -f "$f" ]]; then
+              sha256sum "$f" >> "${DRIFT_DIR}/before.sha256"
+            else
+              echo "MISSING $f" >> "${DRIFT_DIR}/before.sha256"
+            fi
+          done
+
+      - name: Sync interface files into Xcectua
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Copy ONLY the required consumer circuit files (exclude VERSION and PDR-SPEC.md)
+          cp -f "${SYNC_TMP_DIR}/${IFACE_TEMPLATES_PATH}/rer/rer.lock.yml" "rer/rer.lock.yml"
+          mkdir -p ".github/workflows"
+          cp -f "${SYNC_TMP_DIR}/${IFACE_TEMPLATES_PATH}/.github/workflows/rer-governance-gate.yml" ".github/workflows/rer-governance-gate.yml"
+          cp -f "${SYNC_TMP_DIR}/${IFACE_TEMPLATES_PATH}/.github/CODEOWNERS" ".github/CODEOWNERS"
+
+      - name: Snapshot updated files (after)
+        id: snap_after
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            ".github/workflows/rer-governance-gate.yml"
+            ".github/CODEOWNERS"
+            "rer/rer.lock.yml"
+          )
+          : > "${DRIFT_DIR}/after.sha256"
+          for f in "${files[@]}"; do
+            if [[ -f "$f" ]]; then
+              sha256sum "$f" >> "${DRIFT_DIR}/after.sha256"
+            else
+              echo "MISSING $f" >> "${DRIFT_DIR}/after.sha256"
+            fi
+          done
+          # Generate a quick diff for the report (non-fatal)
+          diff -u "${DRIFT_DIR}/before.sha256" "${DRIFT_DIR}/after.sha256" > "${DRIFT_DIR}/sha256.diff" || true
+
+      - name: Create drift report (markdown)
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "# Xcectua Interface Sync Report"
+            echo ""
+            echo "- Source (rexec): \`${{ steps.lock.outputs.rer_repo }} @ ${{ steps.lock.outputs.rer_ref }}\`"
+            echo "- Templates path: \`${IFACE_TEMPLATES_PATH}\`"
+            echo ""
+            echo "## Files synchronized"
+            echo "- \`.github/workflows/rer-governance-gate.yml\`"
+            echo "- \`.github/CODEOWNERS\`"
+            echo "- \`rer/rer.lock.yml\`"
+            echo ""
+            echo "## Hashes (before)"
+            if [[ -f "${DRIFT_DIR}/before.sha256" ]]; then
+              sed 's/^/    /' "${DRIFT_DIR}/before.sha256"
+            else
+              echo "    (no baseline)"
+            fi
+            echo ""
+            echo "## Hashes (after)"
+            sed 's/^/    /' "${DRIFT_DIR}/after.sha256"
+            echo ""
+            echo "## Hash diff"
+            if [[ -s "${DRIFT_DIR}/sha256.diff" ]]; then
+              echo '```diff'
+              cat "${DRIFT_DIR}/sha256.diff"
+              echo '```'
+            else
+              echo "_No differences detected (already in sync)._"
+            fi
+          } > "${DRIFT_DIR}/REPORT.md"
+
+      - name: Upload sync report (7 days)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcectua-interface-sync-report-${{ github.run_id }}
+          path: .sync-drift
+          retention-days: ${{ env.PDR_RETENTION_DAYS }}
+
+      - name: Detect working tree changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create pull request with updates
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            chore(sync): align with xcectua-interface from ${{ steps.lock.outputs.rer_repo }} @ ${{ steps.lock.outputs.rer_ref }}
+          committer: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          title: "chore(sync): update from xcectua-interface @ ${{ steps.lock.outputs.rer_ref }}"
+          body: |
+            This PR auto-syncs the consumer circuit with the **Xcectua Interface** published by **${{ steps.lock.outputs.rer_repo }}** at ref **${{ steps.lock.outputs.rer_ref }}**.
+
+            - Synced:
+              - `.github/workflows/rer-governance-gate.yml`
+              - `.github/CODEOWNERS`
+              - `rer/rer.lock.yml`
+
+            - Excluded by contract:
+              - `rexce/xcectua-interface/VERSION`
+              - `rexce/xcectua-interface/PDR-SPEC.md`
+
+            See the attached artifact **xcectua-interface-sync-report-${{ github.run_id }}** for SHA256 before/after and diff.
+
+            > This keeps the consumer circuit **byte-for-byte aligned** with the authoritative interface in `rexec`, while preserving the policy-only separation of duties.
+          branch: chore/sync-xcectua-interface
+          delete-branch: true
+          draft: false
+          labels: |
+            automation
+            governance
+            sync
+
+      - name: No changes detected
+        if: steps.changes.outputs.changed != 'true'
+        shell: bash
+        run: |
+          echo "Already in sync with ${IFACE_TEMPLATES_PATH} from ${{ steps.lock.outputs.rer_repo }} @ ${{ steps.lock.outputs.rer_ref }}"
