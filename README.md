@@ -1,90 +1,75 @@
-# Xcectua Interface (Consumer Governance Contract)
+# Xcectua
 
-The **Xcectua Interface** is the authoritative, versioned consumer governance
-contract published by the `rexec` repository. All consumer repositories must
-implement this interface exactly as defined.
+Xcectua is the **reference implementation of the Xcectua Interface** and is a
+**separate repository** from `rexec`.
 
-This interface is:
-
-- **released and versioned by `rexec`**
-- **policy‑neutral**
-- **copy‑exact and non‑optional**
-- **enforced in CI/CD** for all consumers
-
-This directory is the **source of truth** for all consumer governance templates.
+The **Xcectua Interface** (published inside the `rexec` repository) defines the
+mandatory consumer governance circuit for validating release evidence.  
+Xcectua demonstrates how that interface behaves in a real repository, with real
+CI execution, real signature verification, and real PDR generation.
 
 ---
 
-## What the Interface Provides
+## What Xcectua *is*
 
-Canonical templates for consumer repositories:
+- A **runnable, auditable example** of a consumer repository
+- A demonstration of **correct enforcement** of the Xcectua Interface
+- A showcase of:
+  - pinning `rexec` through `rer.lock.yml`
+  - running the mandatory governance gate
+  - verifying cosign signatures
+  - generating and uploading a **Policy Decision Record (PDR)**
 
-- `rer/rer.lock.yml`  
-  Pins `rexec` as the policy authority at a specific tag or SHA.
-
-- `.github/workflows/rer-governance-gate.yml`  
-  Mandatory governance gate:
-  - fail‑closed if no evidence  
-  - enforce cosign signature verification  
-  - evaluate `release`, `promotion`, and `consistency` policy namespaces  
-  - upload a Policy Decision Record (PDR) on every run
-
-- `.github/CODEOWNERS`  
-  Protects the governance circuit and the lockfile.
-
-A complete **PDR specification** is provided in:
-PDR-SPEC.md
+It exists to help developers understand and correctly implement the interface.
 
 ---
 
-## What Consumers Must Not Change
+## What Xcectua *is not*
 
-Consumers may **not** modify:
+- **Not** part of `rexec`
+- **Not** a policy authority
+- **Not** a source of truth for governance templates
+- **Not** a dependency for other repositories
 
-- CI gate logic  
-- cosign verification  
-- required `.sig` and `.bundle` structure  
-- PDR creation rules  
-- policy namespace execution  
-- lockfile structure (`rer.lock.yml`)  
+Consumers must **not** copy files from the Xcectua repo.  
+They must copy governance files **only** from the Xcectua Interface inside:
+rexec/rexce/xcectua-interface/templates/xcectua-circuit/
 
-All these invariants are enforced through the interface.
-
----
-
-## Reference Implementation (Separate Repository)
-
-There exists a separate repository named **Xcectua**, which:
-
-- implements this interface exactly  
-- demonstrates correct end‑to‑end use  
-- produces real PDR artifacts  
-- shows deterministic governance behavior
-
-Important:
-
-- Xcectua is **not** part of `rexec`.  
-- Xcectua is **not** a source of truth.  
-- Consumers must **not** copy files from the Xcectua repo.  
-- Consumers copy only from this interface directory inside `rexec`.
+This ensures governance invariants cannot drift.
 
 ---
 
-## Versioning Rule
+## Non‑negotiable Requirements (as interface implementer)
 
-The file:
-VERSION
-must match the current 'rexec' release tag:
-rexec tag: rexec tag: vX.Y.Z interface VERSION: X.Y.Z
+Xcectua implements the following mandatory behaviors:
 
-
-This ensures deterministic synchronization across all consumers.
+- Evidence is required (`releases/**/release-record.json` must exist)
+- Rexec is pinned via: rer/rer.lock.yml
+- Cosign signature verification is mandatory  
+- Required refs must match: data.policy.signature.verify_refs.required
+- The PDR (Policy Decision Record) is always uploaded (`if: always()`)
+- Mandatory CI workflow: .github/workflows/rer-governance-gate.yml
+- Governance‑sensitive files protected via CODEOWNERS: /rer/rer.lock.yml
+/.github/workflows/rer-governance-gate.yml
 
 ---
 
-## Recommended Enforcement
+## Required Secrets
 
-Consumers should protect `main` and require the status check:
-Validate Release Evidence (RER)
+The repository requires one secret to run the governance gate:
 
-This ensures the governance circuit which is the xcectua-interface is active and cannot be bypassed.
+- `COSIGN_PUBLIC_KEY` — public half of the cosign keypair used to verify evidence signatures
+
+---
+
+## Summary
+
+Xcectua is a **live, enforced, end‑to‑end reference implementation** of the
+consumer governance circuit.  
+It shows exactly how a real repo should behave when implementing the **Xcectua
+Interface**, while remaining separate from and subordinate to the `rexec`
+policy authority:
+
+rexec  →  publishes policies + interface,
+Xcectua Interface  →  canonical consumer templates,
+Xcectua repo  →  human-readable, runnable example.
