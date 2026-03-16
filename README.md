@@ -1,7 +1,7 @@
 # Xcectua
 
 Xcectua is the **reference implementation of the Xcectua Interface** and is a
-**separate repository** from `rexec`.
+**separate repository** from `rexce`.
 
 The **Xcectua Interface** (published inside the `rexec` repository) defines the
 mandatory consumer governance circuit for validating release evidence.  
@@ -15,7 +15,7 @@ CI execution, real signature verification, and real PDR generation.
 - A **runnable, auditable example** of a consumer repository
 - A demonstration of **correct enforcement** of the Xcectua Interface
 - A showcase of:
-  - pinning `rexec` through `rer.lock.yml`
+  - pinning `rexce` through `rer.lock.yml`
   - running the mandatory governance gate
   - verifying cosign signatures
   - generating and uploading a **Policy Decision Record (PDR)**
@@ -70,6 +70,6 @@ It shows exactly how a real repo should behave when implementing the **Xcectua
 Interface**, while remaining separate from and subordinate to the `rexec`
 policy authority:
 
-rexec  →  publishes policies + interface,
+rexce  →  publishes policies + interface,
 Xcectua Interface  →  canonical consumer templates,
 Xcectua repo  →  human-readable, runnable example.
