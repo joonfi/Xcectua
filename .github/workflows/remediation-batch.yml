@@ -1,0 +1,28 @@
+name: Xcectua Batch Remediation (Open PRs for All Drifted Repos)
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate sample artifacts (replace with real remediation logic)
+        run: |
+          mkdir -p out
+          printf "reason,count\npermissions_diff,5\naction_ref_mismatch,3\n" > out/reason_breakdown.csv
+          printf "repo,pr_url,timestamp,reasons\norg/repo1,https://github.com/org/repo1/pull/101,2026-03-10T00:00:00Z,permissions_diff\norg/repo2,https://github.com/org/repo2/pull/202,2026-03-10T01:00:00Z,action_ref_mismatch,permissions_diff\n" > out/remediated.csv
+      - name: Upload reason diff
+        uses: actions/upload-artifact@v4
+        with:
+          name: remediated-reason-diff
+          path: out/reason_breakdown.csv
+      - name: Upload remediated today
+        uses: actions/upload-artifact@v4
+        with:
+          name: remediated-today
+          path: out/remediated.csv

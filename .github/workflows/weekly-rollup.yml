@@ -1,0 +1,143 @@
+name: Xcectua Weekly Governance Remediation Roll-up
+
+on:
+  schedule:
+    - cron: '0 21 * * 0'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Lookback window in days'
+        required: false
+        default: '7'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  weekly:
+    runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      SLO_OWNERS_JSON: ${{ vars.SLO_OWNERS_JSON }}
+      SLA_DAYS_JSON: ${{ vars.SLA_DAYS_JSON }}
+      ROUTING_JSON: ${{ vars.ROUTING_JSON }}
+      PAGES_PUBLISH: ${{ vars.PAGES_PUBLISH }}
+      XCECTUA_PAGES_TOKEN: ${{ secrets.XCECTUA_PAGES_TOKEN }}
+      SLOS_JSON: ${{ vars.SLOS_JSON }}
+      SNAPSHOT_SIGNING_SECRET: ${{ secrets.SNAPSHOT_SIGNING_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Aggregate artifacts (batch runs + previous weekly)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p wk hist
+          ids=$(gh run list --workflow "Xcectua Batch Remediation (Open PRs for All Drifted Repos)" --limit 50 --json databaseId,updatedAt,conclusion -q '.[] | select(.conclusion=="success") | .databaseId')
+          for id in $ids; do
+            gh run download "$id" -n remediated-today -D wk/r$id 2>/dev/null || true
+            gh run download "$id" -n remediated-reason-diff -D wk/r$id 2>/dev/null || true
+          done
+          wids=$(gh run list --workflow "Xcectua Weekly Governance Remediation Roll-up" --limit 20 --json databaseId,conclusion,updatedAt -q '.[] | select(.conclusion=="success")')
+          echo "$wids" | jq -c '.[]' | while read obj; do
+            id=$(echo "$obj" | jq -r '.databaseId'); ts=$(echo "$obj" | jq -r '.updatedAt')
+            gh run download "$id" -n weekly-rollup -D hist/r$id 2>/dev/null || true
+            echo "{\"run_id\":$id,\"updatedAt\":\"$ts\"}" > hist/r$id/run.json || true
+          done
+
+      - name: Build weekly tables (rollup, top-repos)
+        run: |
+          python3 - <<'PY'
+import csv, pathlib
+from collections import Counter, defaultdict
+base=pathlib.Path('wk')
+reason_counts=Counter(); per_reason_repo=defaultdict(Counter)
+for run_dir in sorted(base.glob('r*')):
+    rm=run_dir/'remediated.csv'
+    if rm.exists():
+        with rm.open() as f:
+            for row in csv.DictReader(f):
+                repo=row.get('repo','').strip(); reasons=(row.get('reasons') or '').strip()
+                if not repo or not reasons: continue
+                for r in [s.strip() for s in reasons.split(',') if s.strip()]:
+                    reason_counts[r]+=1; per_reason_repo[r][repo]+=1
+with open('weekly_reason_rollup.csv','w',newline='') as f:
+    w=csv.DictWriter(f,fieldnames=['reason','total_count']); w.writeheader()
+    for r,c in reason_counts.most_common(): w.writerow({'reason':r,'total_count':c})
+with open('weekly_top_repos.csv','w',newline='') as f:
+    w=csv.DictWriter(f,fieldnames=['reason','repo','count']); w.writeheader()
+    for r in sorted(per_reason_repo.keys()):
+        for repo,count in per_reason_repo[r].most_common(25):
+            w.writerow({'reason':r,'repo':repo,'count':count})
+PY
+
+      - name: Evaluate SLOs + SLA clocks + owner leaderboard
+        env:
+          SLOS_JSON: ${{ vars.SLOS_JSON }}
+          SLA_DAYS_JSON: ${{ vars.SLA_DAYS_JSON }}
+          SLO_OWNERS_JSON: ${{ vars.SLO_OWNERS_JSON }}
+        run: |
+          python3 scripts/report/eval-slos.py || true
+          python3 scripts/report/compute-sla.py || true
+          python3 scripts/report/build-owner-leaderboard.py || true
+
+      - name: Download previous weekly rollups (for trends)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p hist2
+          ids=$(gh run list --workflow "Xcectua Weekly Governance Remediation Roll-up" --limit 20 --json databaseId,conclusion -q '.[] | select(.conclusion=="success") | .databaseId')
+          idx=0
+          for id in $ids; do
+            [ "$idx" -ge 12 ] && break
+            gh run download "$id" -n weekly-rollup -D hist2/r$id 2>/dev/null || true
+            if [ -f hist2/r$id/weekly_reason_rollup.csv ]; then idx=$((idx+1)); fi
+          done
+
+      - name: Build per‑repo pages + dashboard
+        run: |
+          python3 scripts/site/build-repo-pages.py || true
+          python3 scripts/site/build-pages-dashboard.py || true
+
+      - name: Export heatmap + sign snapshot
+        run: |
+          python3 scripts/site/export-heatmap.py || true
+          python3 scripts/site/generate-snapshot.py || true
+
+      - name: Upload weekly artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-rollup
+          path: |
+            weekly_reason_rollup.csv
+            weekly_top_repos.csv
+            weekly_owner_leaderboard.csv
+            weekly_owner_leaderboard.md
+            slo_report.md
+            sla_status.csv
+            sla_status.md
+            site/index.html
+            site/heatmap.png
+            site/heatmap.svg
+            site/snapshot.manifest.json
+            site/snapshot.signature
+
+      - name: Publish dashboard to reports branch
+        if: env.PAGES_PUBLISH == 'true' && env.XCECTUA_PAGES_TOKEN != ''
+        run: |
+          set -euo pipefail
+          git config user.name "xcectua-bot"; git config user.email "xcectua-bot@noreply"
+          git checkout -B reports
+          mkdir -p site
+          cp -rf site/* site/ || true
+          git add site || true
+          if git diff --cached --quiet; then echo "No dashboard changes."; exit 0; fi
+          git commit -m "chore(dashboard): v4.0 publish $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git remote set-url origin "https://x-access-token:${XCECTUA_PAGES_TOKEN}@github.com/${{ github.repository }}"
+          git push -u origin reports
