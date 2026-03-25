@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "gov-diff Output Schema v1.0.0",
+  "type": "object",
+  "required": [
+    "version",
+    "base",
+    "target",
+    "timestamp",
+    "summary",
+    "classification",
+    "governance_paths",
+    "non_governance_paths",
+    "status"
+  ],
+  "properties": {
+    "version": { "type": "string" },
+    "base": { "type": "string" },
+    "target": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "files_changed": { "type": "integer" },
+        "governance_files_changed": { "type": "integer" }
+      }
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["TYPE-0", "TYPE-1", "TYPE-2", "TYPE-3"]
+    },
+    "classification_reason": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "governance_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "non_governance_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["OK"]
+    }
+  }
+}

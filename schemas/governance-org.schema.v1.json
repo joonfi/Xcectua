@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Org Governance Snapshot v1.0.0",
+  "type": "object",
+  "required": ["version", "timestamp", "org", "summary", "repos"],
+  "properties": {
+    "version": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "org": { "type": "string" },
+
+    "summary": {
+      "type": "object",
+      "properties": {
+        "repos_total": { "type": "integer" },
+        "repos_phase2_compliant": { "type": "integer" },
+        "repos_with_drift": { "type": "integer" },
+        "repos_type3_changes": { "type": "integer" }
+      }
+    },
+
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["repo", "health", "classification", "has_drift"],
+        "properties": {
+          "repo": { "type": "string" },
+          "health": { "type": "string", "enum": ["OK", "WARN", "FAIL"] },
+          "classification": {
+            "type": "string",
+            "enum": ["TYPE-0", "TYPE-1", "TYPE-2", "TYPE-3"]
+          },
+          "has_drift": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

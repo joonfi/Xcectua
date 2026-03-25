@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Governance Metrics v1.0.0",
+  "type": "object",
+  "required": ["version", "org", "window", "metrics"],
+  "properties": {
+    "version": { "type": "string" },
+    "org": { "type": "string" },
+    "window": {
+      "type": "object",
+      "properties": {
+        "from": { "type": "string", "format": "date-time" },
+        "to": { "type": "string", "format": "date-time" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "runs_total": { "type": "integer" },
+        "avg_duration_sec": { "type": "number" },
+        "p95_duration_sec": { "type": "number" },
+        "p99_duration_sec": { "type": "number" },
+        "by_classification": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "runs": { "type": "integer" },
+              "avg_duration_sec": { "type": "number" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

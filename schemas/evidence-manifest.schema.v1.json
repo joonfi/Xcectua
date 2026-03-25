@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Evidence Manifest v1.0.0",
+  "type": "object",
+  "required": [
+    "version",
+    "gcp",
+    "classification",
+    "generated_at",
+    "required_evidence"
+  ],
+  "properties": {
+    "version": { "type": "string" },
+    "gcp": { "type": "string" },
+    "classification": {
+      "type": "string",
+      "enum": ["TYPE-0", "TYPE-1", "TYPE-2", "TYPE-3"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "required_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "path"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      }
+    },
+    "optional_evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/properties/required_evidence/items"
+      }
+    }
+  }
+}

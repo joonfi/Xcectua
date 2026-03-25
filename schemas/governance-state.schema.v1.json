@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Governance State Snapshot v1.0.0",
+  "type": "object",
+  "required": [
+    "version",
+    "repo",
+    "timestamp",
+    "enforcement",
+    "health",
+    "change_intent",
+    "artifacts",
+    "drift_summary"
+  ],
+  "properties": {
+    "version": { "type": "string" },
+    "repo": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+
+    "enforcement": {
+      "type": "object",
+      "properties": {
+        "required_check": { "type": "string" },
+        "phase2_compliant": { "type": "boolean" }
+      },
+      "required": ["required_check", "phase2_compliant"]
+    },
+
+    "health": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["OK", "WARN", "FAIL"] },
+        "source": { "type": "string", "enum": ["rer-doctor"] }
+      },
+      "required": ["status", "source"]
+    },
+
+    "change_intent": {
+      "type": "object",
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": ["TYPE-0", "TYPE-1", "TYPE-2", "TYPE-3"]
+        },
+        "source": { "type": "string", "enum": ["gov-diff"] }
+      },
+      "required": ["classification", "source"]
+    },
+
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "phase3_docs_present": { "type": "boolean" },
+        "evidence_docs_present": { "type": "boolean" }
+      },
+      "required": ["phase3_docs_present", "evidence_docs_present"]
+    },
+
+    "drift_summary": {
+      "type": "object",
+      "properties": {
+        "has_drift": { "type": "boolean" },
+        "signals": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["has_drift", "signals"]
+    }
+  }
+}
