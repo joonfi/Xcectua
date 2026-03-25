@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "RER Doctor Output Schema v1.0.0",
+  "type": "object",
+  "properties": {
+    "version": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "repo": { "type": "string" },
+    "enforcement": {
+      "type": "object",
+      "properties": {
+        "required_check_ok": { "type": "boolean" },
+        "admin_bypass_ok": { "type": "boolean" },
+        "branch_protection_ok": { "type": "boolean" },
+        "shadow_validator_present": { "type": "boolean" }
+      },
+      "required": [
+        "required_check_ok",
+        "admin_bypass_ok",
+        "branch_protection_ok",
+        "shadow_validator_present"
+      ]
+    },
+    "phase2_invariants": {
+      "type": "object",
+      "properties": {
+        "single_required_check": { "type": "boolean" },
+        "no_admin_bypass": { "type": "boolean" },
+        "no_shadow_validators": { "type": "boolean" },
+        "protected_default_branch": { "type": "boolean" }
+      },
+      "required": [
+        "single_required_check",
+        "no_admin_bypass",
+        "no_shadow_validators",
+        "protected_default_branch"
+      ]
+    },
+    "phase3_artifacts": {
+      "type": "object",
+      "properties": {
+        "gcp_docs_present": { "type": "boolean" },
+        "diff_classification_present": { "type": "boolean" },
+        "evidence_docs_present": { "type": "boolean" }
+      },
+      "required": [
+        "gcp_docs_present",
+        "diff_classification_present",
+        "evidence_docs_present"
+      ]
+    },
+    "drift": {
+      "type": "object",
+      "properties": {
+        "missing_docs": { "type": "array", "items": { "type": "string" } },
+        "unexpected_files": { "type": "array", "items": { "type": "string" } },
+        "enforcement_mismatch": { "type": "array", "items": { "type": "string" } },
+        "workflow_drift": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": [
+        "missing_docs",
+        "unexpected_files",
+        "enforcement_mismatch",
+        "workflow_drift"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["OK", "WARN", "FAIL"]
+    }
+  },
+  "required": [
+    "version",
+    "timestamp",
+    "repo",
+    "enforcement",
+    "phase2_invariants",
+    "phase3_artifacts",
+    "drift",
+    "status"
+  ]
+}
